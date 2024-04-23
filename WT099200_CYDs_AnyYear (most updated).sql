@@ -9,7 +9,7 @@ WITH MAIN_POOL AS (
       SELECT GIFT_DONOR_ID
         FROM GIFT,
              ALLOCATION
-       WHERE GIFT_YEAR_OF_GIVING = '2023'
+       WHERE GIFT_YEAR_OF_GIVING = '2024'
          AND GIFT_ASSOCIATED_ALLOCATION = ALLOCATION_CODE
          AND (ALLOC_SCHOOL = 'KM' OR
              (ALLOC_SCHOOL = 'LW' AND
@@ -18,7 +18,7 @@ WITH MAIN_POOL AS (
       SELECT PLEDGE_DONOR_ID
         FROM PLEDGE,
              ALLOCATION
-       WHERE PLEDGE_YEAR_OF_GIVING = '2023'
+       WHERE PLEDGE_YEAR_OF_GIVING = '2024'
          AND PLEDGE_ALLOCATION_NAME = ALLOCATION_CODE
          AND (ALLOC_SCHOOL = 'KM' OR
              (ALLOC_SCHOOL = 'LW' AND
@@ -26,24 +26,24 @@ WITH MAIN_POOL AS (
     WHERE GIFT_DONOR_ID = ID_NUMBER
       AND E.RECORD_TYPE_CODE = TRT.RECORD_TYPE_CODE),
                
-   TOTAL_GIFT_2023 AS (           
+   TOTAL_GIFT_2024 AS (            
    SELECT GIFT_DONOR_ID,
-          SUM(GIFT_ASSOCIATED_CREDIT_AMT) TOTAL_GIFT_FY_2023
+          SUM(GIFT_ASSOCIATED_CREDIT_AMT) TOTAL_GIFT_FY_2024
      FROM GIFT,
           ALLOCATION
-    WHERE GIFT_YEAR_OF_GIVING = '2023'
+    WHERE GIFT_YEAR_OF_GIVING = '2024'
       AND GIFT_ASSOCIATED_ALLOCATION = ALLOCATION_CODE
       AND (ALLOC_SCHOOL = 'KM' OR
           (ALLOC_SCHOOL = 'LW' AND
            ALLOC_SCHOOLX(ALLOCATION_CODE, ALLOC_SCHOOL, 'KM') = 'KM'))
     GROUP BY GIFT_DONOR_ID),
     
-   TOTAL_PLEDGE_2023 AS (           
+   TOTAL_PLEDGE_2024 AS (           
    SELECT PLEDGE_DONOR_ID,
-          SUM(PLEDGE_ASSOCIATED_CREDIT_AMT) TOTAL_PLEDGE_FY_2023
+          SUM(PLEDGE_ASSOCIATED_CREDIT_AMT) TOTAL_PLEDGE_FY_2024
      FROM PLEDGE,
           ALLOCATION
-    WHERE PLEDGE_YEAR_OF_GIVING = '2023'
+    WHERE PLEDGE_YEAR_OF_GIVING = '2024'
       AND PLEDGE_ALLOCATION_NAME = ALLOCATION_CODE
       AND (ALLOC_SCHOOL = 'KM' OR
           (ALLOC_SCHOOL = 'LW' AND
@@ -84,7 +84,7 @@ WITH MAIN_POOL AS (
                                      ORDER BY GIFT_YEAR_oF_GIVING DESC) ROWX
         FROM GIFT,
              ALLOCATION
-       WHERE GIFT_YEAR_OF_GIVING < '2023'
+       WHERE GIFT_YEAR_OF_GIVING < '2024'
          AND GIFT_ASSOCIATED_ALLOCATION = ALLOCATION_CODE
          AND (ALLOC_SCHOOL = 'KM' OR
              (ALLOC_SCHOOL = 'LW' AND
@@ -105,7 +105,7 @@ WITH MAIN_POOL AS (
                                      ORDER BY PLEDGE_YEAR_oF_GIVING DESC) ROWX
         FROM PLEDGE,
              ALLOCATION
-       WHERE PLEDGE_YEAR_OF_GIVING < '2023'
+       WHERE PLEDGE_YEAR_OF_GIVING < '2024'
          AND PLEDGE_ALLOCATION_NAME = ALLOCATION_CODE
          AND (ALLOC_SCHOOL = 'KM' OR
              (ALLOC_SCHOOL = 'LW' AND
@@ -175,13 +175,42 @@ AND assignment_active_calc = 'Active'
 GROUP BY h.id_number
 )
 
+-- mg score
+, mg_score as (
+  SELECT id_number
+    ,MAX(id_segment) KEEP (DENSE_RANK FIRST ORDER BY segment_year DESC) AS id_segment
+    ,MAX(id_score) KEEP (DENSE_RANK FIRST ORDER BY segment_year DESC) AS id_score
+    ,MAX(pr_segment) KEEP (DENSE_RANK FIRST ORDER BY segment_year DESC) AS pr_segment
+    ,MAX(pr_score) KEEP (DENSE_RANK FIRST ORDER BY segment_year DESC) AS pr_score
+  FROM RPT_PBH634.v_Ksm_Model_Mg
+  group by id_number
+)
+
+-- email
+, pref_email As (
+Select id_number
+     , email_address
+From email
+Where email_status_code = 'A'
+And preferred_ind = 'Y'
+)
+
 
 SELECT MP.GIFT_DONOR_ID,
        MP.PREF_MAIL_NAME,
+       nu_prs_trp_prospect.pref_city,
+       nu_prs_trp_prospect.pref_state,
+       nu_prs_trp_prospect.officer_rating,
+       nu_prs_trp_prospect.evaluation_rating,
+       mg_score.id_segment as Identification_model_segment,
+       mg_score.id_score as Identification_model_score,
+       mg_score.pr_segment as Prioritization_model_segment,
+       mg_score.pr_score as Prioritization_model_score,
+       pref_email.email_address,
        prospect_manager.prospect_manager,
        lgo.lgo,
-       TOTAL_GIFT_2023.TOTAL_GIFT_FY_2023,
-       TOTAL_PLEDGE_2023.TOTAL_PLEDGE_FY_2023,
+       TOTAL_GIFT_2024.TOTAL_GIFT_FY_2024,
+       TOTAL_PLEDGE_2024.TOTAL_PLEDGE_FY_2024,
        last_gift_hh.last_gift_date,     
        last_gift_hh.last_gift_recognition_credit,
        last_gift_hh.last_gift_allocation,
@@ -198,8 +227,8 @@ SELECT MP.GIFT_DONOR_ID,
        KSM_PLEDGE_TOTAL      
        
   FROM MAIN_POOL MP,
-       TOTAL_GIFT_2023,
-       TOTAL_PLEDGE_2023,
+       TOTAL_GIFT_2024,
+       TOTAL_PLEDGE_2024,
        MOST_RECENT_GIFT,
        MOST_RECENT_PLEDGE,
        PRIOR_FY_GIFT,
@@ -208,9 +237,12 @@ SELECT MP.GIFT_DONOR_ID,
        KSM_PLEDGE_TOTAL,
        last_gift_hh,
        prospect_manager,
-       lgo
- WHERE MP.GIFT_DONOR_ID = TOTAL_GIFT_2023.GIFT_DONOR_ID (+)
-   AND MP.GIFT_DONOR_ID = TOTAL_PLEDGE_2023.PLEDGE_DONOR_ID (+)
+       lgo,
+       nu_prs_trp_prospect,
+       mg_score,
+       pref_email
+ WHERE MP.GIFT_DONOR_ID = TOTAL_GIFT_2024.GIFT_DONOR_ID (+)
+   AND MP.GIFT_DONOR_ID = TOTAL_PLEDGE_2024.PLEDGE_DONOR_ID (+)
    AND MP.GIFT_DONOR_ID = MOST_RECENT_GIFT.GIFT_DONOR_ID (+)
    AND MP.GIFT_DONOR_ID = MOST_RECENT_PLEDGE.PLEDGE_DONOR_ID (+)
    AND MP.GIFT_DONOR_ID = PRIOR_FY_GIFT.GIFT_DONOR_ID (+)
@@ -220,4 +252,7 @@ SELECT MP.GIFT_DONOR_ID,
    AND MP.GIFT_DONOR_ID = last_gift_hh.id_number (+)
    AND MP.GIFT_DONOR_ID = prospect_manager.id_number (+)
    AND MP.GIFT_DONOR_ID = lgo.id_number (+)
+   AND MP.GIFT_DONOR_ID = nu_prs_trp_prospect.id_number (+)
+   AND MP.GIFT_DONOR_ID = mg_score.id_number (+)
+   AND MP.GIFT_DONOR_ID = pref_email.id_number (+)
  ORDER BY MP.GIFT_DONOR_ID
