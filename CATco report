@@ -4,9 +4,26 @@
 notes:
 
 - credit amount > recognition credit (so keep credit amount)
-- talk with paul about adding in geo code & mg model scores (wait until data is ready) --> stg_alumni
+- talk with paul about adding in geo code, gift officers, and mg model scores
+
 
 when I use mv_ksm_transactions with no filter, the extra people who were not in the CAtracks version are corporations or matching gifts
+
+maybe remove this filter:     and (ksm_af_flag = 'Y' or ksm_cru_flag = 'Y')
+These ids still aren't showing up after removing this filter. and now there is maybe 100 extra rows in the catco verison
+0000048220
+0000367570
+0000383490
+0000624460
+0000667883
+0000708544
+0000734556
+
+
+
+ADD LGO AND PMS and geo code (wait until its ready) --> stg_alumni
+
+!!!!!!!
 
 end up separating out into two tabs: one for people who gave cash this year, and one tab for people who only made commitments (pledges), if they did both, put on cash tab
 
