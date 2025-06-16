@@ -73,7 +73,7 @@ select distinct unique_donors.credited_donor_id
       ,mv_entity.preferred_address_state
       ,mv_ksm_giving_summary.cash_cfy
       ,mv_ksm_giving_summary.ngc_cfy
-      --,pledge_total.total_pledge_fy_2025
+      ,pledge_total.total_pledge_fy_2025
       ,mv_ksm_giving_summary.last_cash_date
       ,mv_ksm_giving_summary.last_cash_recognition_credit
       ,mv_ksm_giving_summary.last_cash_designation
@@ -88,7 +88,7 @@ select distinct unique_donors.credited_donor_id
       ,mv_ksm_giving_summary.last_pledge_opportunity_type
       ,mv_ksm_giving_summary.cash_lifetime
       ,mv_ksm_giving_summary.ngc_lifetime
-      --,pledge_total.total_pledge_all_time
+      ,pledge_total.total_pledge_all_time
       ,pref_email.pref_email
       ,gift_officers.prospect_manager_name
       ,gift_officers.lagm_name
