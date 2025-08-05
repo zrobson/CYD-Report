@@ -1,17 +1,5 @@
 
-/*
 
-notes:
-
-- credit amount > recognition credit (so keep credit amount)
-- talk with paul about adding in geo code & mg model scores (wait until data is ready) --> stg_alumni
-
-end up separating out into two tabs: one for people who gave cash this year, and one tab for people who only made commitments (pledges), if they did both, put on cash tab
-
-Am I joining the v ksm giving summary view correctly?
-
-ask if we can get more pledge data in giving view (pledge lifetime giving and pledge totals cfy-pfy5
-*/
 
 with cal As (
   Select
@@ -19,85 +7,154 @@ with cal As (
   From v_current_calendar
 )
 
-, unique_donors as ( -- we want to include pledge payments...
-  select distinct credited_donor_id
-        ,household_id
-        ,credited_donor_name
-  from mv_ksm_transactions
-  cross join cal
-  where fiscal_year = curr_fy
-    And adjusted_opportunity_ind Is Null -- Exclude gift adjustment history
-    and gypm_ind is not null -- removing matching claims
---    and (ksm_af_flag = 'Y' or ksm_cru_flag = 'Y')
-)
-
-
---mv_ksm_giving_summary
-, pledge_total as (
- SELECT credited_donor_id
-        ,SUM(CASE WHEN fiscal_year = curr_fy THEN credit_amount ELSE 0 END) AS total_pledge_fy_2025
-        ,SUM(credit_amount) AS total_pledge_all_time
-FROM mv_ksm_transactions
-CROSS JOIN cal
-WHERE adjusted_opportunity_ind IS NULL  -- Exclude gift adjustment history
---  AND (ksm_af_flag = 'Y' OR ksm_cru_flag = 'Y')
-  AND gypm_ind = 'P'
-GROUP BY credited_donor_id
+, unique_hh_donors as ( -- we want to include pledge payments...
+  select distinct household_id
+  from mv_ksm_giving_summary gs
+  where gs.ngc_cfy > 0
+  or gs.cash_cfy > 0
 )
 
 , gift_officers as (
-select *
+select mv_assignments.household_id
+      ,mv_assignments.prospect_manager_name
+      ,mv_assignments.lagm_name
 from mv_assignments
+inner join unique_hh_donors on unique_hh_donors.household_id = mv_assignments.household_id 
 where ksm_manager_flag = 'Y'
 )
 
-, pref_email as (
-Select ucinn_ascendv2__contact__c
-  , ucinn_ascendv2__email_address__c as pref_email
-From stg_alumni.ucinn_ascendv2__email__c
-Where ucinn_ascendv2__is_preferred__c = 'true'
-  And ucinn_ascendv2__status__c = 'Current'
+, primary_hh_degree as (
+select mv_entity.household_id
+      ,d.first_ksm_year
+      ,d.program
+      ,d.degrees_concat
+from mv_entity_ksm_degrees d
+inner join mv_entity on mv_entity.donor_id = d.donor_id
+where mv_entity.household_primary = 'Y'
 )
 
 
-select distinct unique_donors.credited_donor_id
-      ,mv_entity.full_name
+, primary_hh_special_handling as (
+  SELECT
+    mv_entity.household_id
+    , sh.service_indicators_concat AS primary_service_indicators_concat
+    , mv_entity.is_deceased_indicator as primary_is_deceased_indicator
+  FROM mv_entity
+  LEFT JOIN mv_special_handling sh
+    ON mv_entity.donor_id = sh.donor_id
+  WHERE mv_entity.household_primary = 'Y'
+)
+
+
+, spouse_hh_degree as (
+select mv_entity.household_id
+      ,d.first_ksm_year as spouse_first_ksm_year
+      ,d.program as spouse_program
+      ,d.degrees_concat as spouse_degrees_concat
+from mv_entity_ksm_degrees d
+inner join mv_entity on mv_entity.spouse_donor_id = d.donor_id
+where mv_entity.household_primary = 'Y'
+)
+
+
+, spouse_hh_special_handling as (
+ SELECT
+    mv_entity.household_id
+    ,sh.service_indicators_concat AS spouse_service_indicators_concat
+    ,spouse.is_deceased_indicator AS spouse_is_deceased_indicator
+FROM mv_entity
+LEFT JOIN mv_special_handling sh
+    ON mv_entity.spouse_donor_id = sh.donor_id
+LEFT JOIN mv_entity spouse
+    ON mv_entity.spouse_donor_id = spouse.donor_id
+WHERE mv_entity.household_primary = 'Y'
+)
+
+
+/*
+-- LETS EXCLUDE EMAIL UNTIL PAUL CREATES THE consolidated contact info package
+, pref_email as (
+  SELECT 
+    e.household_id
+    ,c_primary.email AS primary_email
+    ,c_spouse.email AS spouse_email
+  FROM mv_entity e
+  LEFT JOIN stg_alumni.contact c_primary
+    ON c_primary.ucinn_ascendv2__donor_id__c = e.donor_id
+  LEFT JOIN stg_alumni.contact c_spouse
+    ON c_spouse.ucinn_ascendv2__donor_id__c = e.spouse_donor_id
+)
+*/
+
+
+select distinct unique_hh_donors.household_id
+      ,case when primary_hh_degree.program is not null or spouse_hh_degree.spouse_program is not null then 'Y' else 'N' end as HH_KSM_AlUM
+      ,mv_entity.donor_id
+      ,mv_entity.full_name as primary_name
       ,mv_entity.primary_record_type
-      ,mv_entity.household_primary
---      ,mv_entity.is_deceased_indicator
-      ,mv_special_handling.service_indicators_concat
-      ,mv_entity_ksm_degrees.first_ksm_year
-      ,mv_entity_ksm_degrees.program
-      ,mv_entity_ksm_degrees.degrees_concat
+      ,primary_hh_special_handling.primary_is_deceased_indicator
+      ,primary_hh_special_handling.primary_service_indicators_concat
+      ,primary_hh_degree.first_ksm_year as primary_first_ksm_year
+      ,primary_hh_degree.program as primary_program
+      ,primary_hh_degree.degrees_concat as primary_degrees_concat
+      ,mv_entity.institutional_suffix as primary_institutional_suffix
+      --,pref_email.primary_email
+      ,mv_entity.spouse_donor_id
+      ,mv_entity.spouse_name
+      ,spouse_hh_special_handling.spouse_is_deceased_indicator
+      ,spouse_hh_special_handling.spouse_service_indicators_concat
+      ,spouse_hh_degree.spouse_first_ksm_year
+      ,spouse_hh_degree.spouse_program
+      ,spouse_hh_degree.spouse_degrees_concat
+      ,mv_entity.spouse_institutional_suffix
+      --,pref_email.spouse_email
       ,mv_entity.preferred_address_city
       ,mv_entity.preferred_address_state
+      ,mv_entity.preferred_address_country
       ,mv_ksm_giving_summary.cash_cfy
+      ,mv_ksm_giving_summary.cash_pfy1
       ,mv_ksm_giving_summary.ngc_cfy
-      ,pledge_total.total_pledge_fy_2025
+      ,mv_ksm_giving_summary.ngc_pfy1
+      ,mv_ksm_giving_summary.pledge_cfy
+      ,mv_ksm_giving_summary.pledge_pfy1
       ,mv_ksm_giving_summary.last_cash_date
       ,mv_ksm_giving_summary.last_cash_recognition_credit
       ,mv_ksm_giving_summary.last_cash_designation
       ,mv_ksm_giving_summary.last_cash_opportunity_type
-      ,mv_ksm_giving_summary.last_ngc_date
-      ,mv_ksm_giving_summary.last_ngc_recognition_credit
-      ,mv_ksm_giving_summary.last_ngc_designation
-      ,mv_ksm_giving_summary.last_ngc_opportunity_type
       ,mv_ksm_giving_summary.last_pledge_date
       ,mv_ksm_giving_summary.last_pledge_recognition_credit
       ,mv_ksm_giving_summary.last_pledge_designation
       ,mv_ksm_giving_summary.last_pledge_opportunity_type
-      ,mv_ksm_giving_summary.cash_lifetime
-      ,mv_ksm_giving_summary.ngc_lifetime
-      ,pledge_total.total_pledge_all_time
-      ,pref_email.pref_email
+     ,CASE WHEN ME.PERSON_OR_ORG = 'O' THEN ODSTRAT.STRATEGY_PRIMARY_RELATION_UNIVERSITY_OVERALL_RATING
+     ELSE DSTRAT.STRATEGY_PRIMARY_RELATION_UNIVERSITY_OVERALL_RATING END AS OFFICER_RATING
+     ,CASE WHEN ME.PERSON_OR_ORG = 'O' THEN ODSTRAT.STRATEGY_PRIMARY_RELATION_RESEARCH_EVALUATION
+     ELSE DSTRAT.STRATEGY_PRIMARY_RELATION_RESEARCH_EVALUATION END AS EVALUATION_RATING
+     -- ,pref_email.pref_email
       ,gift_officers.prospect_manager_name
       ,gift_officers.lagm_name
-from unique_donors
-inner join mv_entity on mv_entity.donor_id = unique_donors.credited_donor_id
-left join pref_email on pref_email.ucinn_ascendv2__contact__c = mv_entity.salesforce_id
-left join pledge_total on pledge_total.credited_donor_id = unique_donors.credited_donor_id
-left join gift_officers on gift_officers.donor_id = unique_donors.credited_donor_id
-left join mv_special_handling on mv_special_handling.donor_id = unique_donors.credited_donor_id
-left join mv_entity_ksm_degrees on mv_entity_ksm_degrees.donor_id = unique_donors.credited_donor_id
-left join mv_ksm_giving_summary on mv_ksm_giving_summary.household_id = unique_donors.household_id -- is this correct join?
-and mv_entity.is_deceased_indicator = 'N' -- not deceased ????
+      -- Example: which tab
+      , Case
+         When mv_ksm_giving_summary.cash_cfy > 0
+           Then 'Cash Tab'
+         When mv_ksm_giving_summary.ngc_cfy > 0
+           Then 'NGC Tab'
+         Else '#CHECK'
+         End
+         As which_tab 
+from unique_hh_donors
+inner join mv_entity on mv_entity.household_id = unique_hh_donors.household_id
+--left join pref_email on pref_email.household_id = unique_hh_donors.household_id
+left join gift_officers on gift_officers.household_id = unique_hh_donors.household_id
+left join primary_hh_special_handling on primary_hh_special_handling.household_id = unique_hh_donors.household_id
+left join spouse_hh_special_handling on spouse_hh_special_handling.household_id = unique_hh_donors.household_id
+left join primary_hh_degree on primary_hh_degree.household_id = unique_hh_donors.household_id
+left join spouse_hh_degree on spouse_hh_degree.household_id = unique_hh_donors.household_id
+inner join mv_ksm_giving_summary on mv_ksm_giving_summary.household_id = unique_hh_donors.household_id -- is this correct join?
+-- ratings
+left join mv_households ME on ME.household_id = unique_hh_donors.household_id
+LEFT JOIN DM_ALUMNI.DIM_CONSTITUENT  DC ON unique_hh_donors.household_id = DC.CONSTITUENT_DONOR_ID
+LEFT JOIN DM_ALUMNI.DIM_ORGANIZATION DCO ON unique_hh_donors.household_id = DCO.ORGANIZATION_DONOR_ID
+LEFT JOIN DM_ALUMNI.DIM_STRATEGY DSTRAT ON DC.CONSTITUENT_PRIMARY_PROSPECT_STRATEGY_RECORD_ID = DSTRAT.STRATEGY_RECORD_ID
+LEFT JOIN DM_ALUMNI.DIM_STRATEGY ODSTRAT ON DCO.ORGANIZATION_PRIMARY_PROSPECT_STRATEGY_RECORD_ID = ODSTRAT.STRATEGY_RECORD_ID
+where mv_entity.household_primary = 'Y'
+order by unique_hh_donors.household_id
