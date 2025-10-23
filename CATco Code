@@ -20,7 +20,6 @@ select mv_assignments.household_id
       ,mv_assignments.lagm_name
 from mv_assignments
 inner join unique_hh_donors on unique_hh_donors.household_id = mv_assignments.household_id 
-where ksm_manager_flag = 'Y'
 )
 
 , primary_hh_degree as (
@@ -125,10 +124,8 @@ select distinct unique_hh_donors.household_id
       ,mv_ksm_giving_summary.last_pledge_recognition_credit
       ,mv_ksm_giving_summary.last_pledge_designation
       ,mv_ksm_giving_summary.last_pledge_opportunity_type
-     ,CASE WHEN ME.PERSON_OR_ORG = 'O' THEN ODSTRAT.STRATEGY_PRIMARY_RELATION_UNIVERSITY_OVERALL_RATING
-     ELSE DSTRAT.STRATEGY_PRIMARY_RELATION_UNIVERSITY_OVERALL_RATING END AS OFFICER_RATING
-     ,CASE WHEN ME.PERSON_OR_ORG = 'O' THEN ODSTRAT.STRATEGY_PRIMARY_RELATION_RESEARCH_EVALUATION
-     ELSE DSTRAT.STRATEGY_PRIMARY_RELATION_RESEARCH_EVALUATION END AS EVALUATION_RATING
+      ,mv_entity.research_evaluation
+      ,mv_entity.university_overall_rating
      -- ,pref_email.pref_email
       ,gift_officers.prospect_manager_name
       ,gift_officers.lagm_name
@@ -150,11 +147,5 @@ left join spouse_hh_special_handling on spouse_hh_special_handling.household_id 
 left join primary_hh_degree on primary_hh_degree.household_id = unique_hh_donors.household_id
 left join spouse_hh_degree on spouse_hh_degree.household_id = unique_hh_donors.household_id
 inner join mv_ksm_giving_summary on mv_ksm_giving_summary.household_id = unique_hh_donors.household_id -- is this correct join?
--- ratings
-left join mv_households ME on ME.household_id = unique_hh_donors.household_id
-LEFT JOIN DM_ALUMNI.DIM_CONSTITUENT  DC ON unique_hh_donors.household_id = DC.CONSTITUENT_DONOR_ID
-LEFT JOIN DM_ALUMNI.DIM_ORGANIZATION DCO ON unique_hh_donors.household_id = DCO.ORGANIZATION_DONOR_ID
-LEFT JOIN DM_ALUMNI.DIM_STRATEGY DSTRAT ON DC.CONSTITUENT_PRIMARY_PROSPECT_STRATEGY_RECORD_ID = DSTRAT.STRATEGY_RECORD_ID
-LEFT JOIN DM_ALUMNI.DIM_STRATEGY ODSTRAT ON DCO.ORGANIZATION_PRIMARY_PROSPECT_STRATEGY_RECORD_ID = ODSTRAT.STRATEGY_RECORD_ID
 where mv_entity.household_primary = 'Y'
 order by unique_hh_donors.household_id
